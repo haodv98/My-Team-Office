@@ -1,0 +1,11 @@
+# Sao chép thành config/members.yaml (không commit). Mỗi người một mục.
+- key: m01
+  display: "Người A"
+  backlog_user_id: 1001
+  github: [user-a]
+  role: dev
+- key: m02
+  display: "Người B"
+  backlog_user_id: 1002
+  github: []
+  role: qs
