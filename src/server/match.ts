@@ -1,5 +1,5 @@
 // Ghép PR với task Backlog và người (thiết kế §5.2).
-import type { Actor, Member, PullRequest, Task } from '../shared/types.js';
+import type { Actor, DeskPr, Member, PullRequest, Task } from '../shared/types.js';
 import { memberByLogin } from './config.js';
 
 const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -47,4 +47,9 @@ export function resolveActor(login: string, body: string, members: Member[], age
     login,
     viaAgent: agentMarkers.some((m) => body.includes(m)),
   };
+}
+
+/** Dạng rút gọn của PR để đặt lên bàn / bảng. */
+export function toDeskPr(pr: PullRequest, taskNumbers: number[]): DeskPr {
+  return { repo: pr.repo, number: pr.number, title: pr.title, url: pr.url, draft: pr.draft, taskNumbers };
 }
