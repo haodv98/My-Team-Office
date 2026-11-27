@@ -2,6 +2,7 @@
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
 import type { Desk } from '../../shared/types.js';
+import { makeChibi, hashOf } from './chibi.js';
 import { FONT, fitText } from './text.js';
 
 const C = {
@@ -20,7 +21,6 @@ const C = {
   yellow: 0xf5b62a,
   robot: 0x9cc6ee,
 };
-const HAIR = [0x2b2118, 0x4a3426, 0x1d1d22, 0x7a4b2a, 0x3a2a4a];
 
 export interface DeskObject {
   group: THREE.Group;
@@ -28,6 +28,8 @@ export interface DeskObject {
   update(desk: Desk): void;
   tick(t: number): void;
   bumpStack(): void;
+  /** Ẩn người ở bàn khi họ đang đi lại. */
+  setSeated(seated: boolean): void;
   dispose(): void;
 }
 
@@ -43,17 +45,6 @@ const sphere = (r: number, color: number, extra?: THREE.MeshStandardMaterialPara
   m.castShadow = true;
   return m;
 };
-const capsule = (r: number, len: number, color: number) => {
-  const m = new THREE.Mesh(new THREE.CapsuleGeometry(r, len, 6, 16), mat(color));
-  m.castShadow = true;
-  return m;
-};
-
-function hashOf(key: string) {
-  let h = 0;
-  for (const ch of key) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
-  return h;
-}
 
 /** Thẻ tên nổi: tên đậm, task đang làm, chấm trạng thái. */
 function createCard() {
@@ -99,6 +90,35 @@ function createCard() {
   return { sprite, draw, dispose: () => tex.dispose() };
 }
 
+/** Màn hình laptop: dòng code chạy (một texture dùng chung, mỗi bàn lệch pha). */
+let codeCanvas: HTMLCanvasElement | null = null;
+function codeTexture(): THREE.CanvasTexture {
+  if (!codeCanvas) {
+    codeCanvas = document.createElement('canvas');
+    codeCanvas.width = 128;
+    codeCanvas.height = 256;
+    const ctx = codeCanvas.getContext('2d')!;
+    ctx.fillStyle = '#1e2a38';
+    ctx.fillRect(0, 0, 128, 256);
+    const colors = ['#7fb4ff', '#9be29b', '#f5c26b', '#d3a6ff', '#c9d4e0'];
+    for (let y = 6, i = 0; y < 250; y += 10, i++) {
+      let x = 8 + ((i * 7) % 4) * 8;
+      for (let k = 0; k < 1 + (i % 3); k++) {
+        const w = 12 + ((i * 13 + k * 29) % 40);
+        if (x + w > 120) break;
+        ctx.fillStyle = colors[(i + k) % colors.length]!;
+        ctx.fillRect(x, y, w, 4);
+        x += w + 6;
+      }
+    }
+  }
+  const tex = new THREE.CanvasTexture(codeCanvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.wrapT = THREE.RepeatWrapping;
+  tex.repeat.set(1, 0.5);
+  return tex;
+}
+
 export function createDesk(desk: Desk): DeskObject {
   const g = new THREE.Group();
   g.userData.memberKey = desk.member.key;
@@ -121,6 +141,7 @@ export function createDesk(desk: Desk): DeskObject {
   const lid = new THREE.Group();
   const lidShell = rbox(0.62, 0.4, 0.025, 0.01, C.laptop);
   lidShell.position.y = 0.2;
+  const code = codeTexture();
   const glow = new THREE.Mesh(new THREE.PlaneGeometry(0.56, 0.34), new THREE.MeshBasicMaterial({ color: C.screen }));
   glow.position.set(0, 0.2, -0.014);
   glow.rotation.y = Math.PI;
@@ -156,33 +177,12 @@ export function createDesk(desk: Desk): DeskObject {
   foot.position.set(0, 0.03, -0.85);
   g.add(seat, back, post, foot);
 
-  // Nhân vật chibi quay mặt ra phía trước (+z)
-  const shirt = new THREE.Color().setHSL((h % 360) / 360, 0.5, 0.58).getHex();
-  const person = new THREE.Group();
-  const body = capsule(0.2, 0.28, shirt);
-  body.position.set(0, 0.86, 0);
-  const head = sphere(0.24, C.skin);
-  head.position.set(0, 1.32, 0.02);
-  const hair = new THREE.Mesh(new THREE.SphereGeometry(0.255, 24, 16, 0, Math.PI * 2, 0, Math.PI * 0.42), mat(HAIR[h % HAIR.length]!));
-  hair.position.copy(head.position);
-  hair.rotation.x = -0.55;
-  hair.castShadow = true;
-  const eyeL = sphere(0.028, C.eye, { roughness: 0.2 });
-  const eyeR = eyeL.clone();
-  eyeL.position.set(-0.08, 1.33, 0.235);
-  eyeR.position.set(0.08, 1.33, 0.235);
-  const cheekMat = new THREE.MeshBasicMaterial({ color: 0xf2a1a1, transparent: true, opacity: 0.55 });
-  const cheekL = new THREE.Mesh(new THREE.CircleGeometry(0.035, 16), cheekMat);
-  const cheekR = cheekL.clone();
-  cheekL.position.set(-0.13, 1.27, 0.232);
-  cheekR.position.set(0.13, 1.27, 0.232);
-  const armL = capsule(0.06, 0.3, shirt);
-  const armR = capsule(0.06, 0.3, shirt);
-  armL.position.set(-0.22, 0.9, 0.2);
-  armR.position.set(0.22, 0.9, 0.2);
-  armL.rotation.x = armR.rotation.x = Math.PI / 2.4;
-  person.add(body, head, hair, eyeL, eyeR, cheekL, cheekR, armL, armR);
-  person.position.set(0, 0, -0.78);
+  // Nhân vật chibi ngồi, quay mặt ra phía trước (+z)
+  const chibi = makeChibi(desk.member.key);
+  const person = chibi.group;
+  const { armL, armR, head } = chibi;
+  chibi.legL.rotation.x = chibi.legR.rotation.x = -Math.PI / 2;
+  person.position.set(0, 0.12, -0.8);
   g.add(person);
 
   // Đèn báo nổi
@@ -235,7 +235,10 @@ export function createDesk(desk: Desk): DeskObject {
     bulbMat.color.setHex(col);
     bulbMat.emissive.setHex(col);
     haloMat.color.setHex(col);
-    (glow.material as THREE.MeshBasicMaterial).color.setHex(t ? 0x4d8fd6 : C.screen);
+    const gm = glow.material as THREE.MeshBasicMaterial;
+    gm.map = t ? code : null;
+    gm.color.setHex(t ? 0xffffff : C.screen);
+    gm.needsUpdate = true;
     typing = !!t;
     robot.visible = d.waits.some((w) => w.sender.viaAgent);
     stack.clear();
@@ -258,10 +261,20 @@ export function createDesk(desk: Desk): DeskObject {
         beacon.position.y = 2.25 + Math.sin(t * 2.2) * 0.06;
         haloMat.opacity = 0.18 + 0.16 * (1 + Math.sin(t * 4)) * 0.5;
       }
-      const k = typing ? Math.sin(t * 14 + h) * 0.08 : 0;
-      armL.rotation.x = Math.PI / 2.4 + k;
-      armR.rotation.x = Math.PI / 2.4 - k;
-      head.rotation.y = hair.rotation.y = Math.sin(t * 0.6 + h) * 0.15;
+      const k = typing ? Math.sin(t * 14 + h) * 0.1 : 0;
+      armL.rotation.x = -1.15 + k;
+      if (lamp !== 'off') {
+        // đang có người chờ: giơ tay vẫy
+        armR.rotation.x = -2.9;
+        armR.rotation.z = Math.sin(t * 6 + h) * 0.35;
+      } else {
+        armR.rotation.x = -1.15 - k;
+        armR.rotation.z = 0;
+      }
+      if (typing) code.offset.y = (t * 0.08 + (h % 100) / 100) % 1;
+      person.position.y = 0.12 + Math.sin(t * 1.6 + h) * 0.012;
+      head.rotation.y = Math.sin(t * 0.6 + h) * 0.25;
+      head.rotation.x = typing ? 0.12 : Math.sin(t * 0.4 + h) * 0.05;
       if (robot.visible) robot.position.y = Math.abs(Math.sin(t * 3)) * 0.06;
       if (stackBump > 0) {
         stackBump = Math.max(0, stackBump - 0.02);
@@ -271,6 +284,9 @@ export function createDesk(desk: Desk): DeskObject {
     bumpStack() {
       stackBump = 1;
     },
+    setSeated(seated) {
+      person.visible = seated;
+    },
     dispose() {
       g.traverse((o) => {
         if (o instanceof THREE.Mesh) {
@@ -279,6 +295,7 @@ export function createDesk(desk: Desk): DeskObject {
         }
       });
       card.dispose();
+      code.dispose();
     },
   };
 }

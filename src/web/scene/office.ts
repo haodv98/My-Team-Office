@@ -93,10 +93,37 @@ function shelf(x: number, z: number): THREE.Group {
   return g;
 }
 
-export function createOffice(
-  scene: THREE.Scene,
-  spots: DeskSpot[],
-): { boardAnchor: THREE.Vector3; center: THREE.Vector3; size: number; dispose(): void } {
+function coffeeMachine(x: number, z: number): THREE.Group {
+  const g = new THREE.Group();
+  const counter = new THREE.Mesh(new RoundedBoxGeometry(0.8, 0.95, 1.4, 2, 0.04), mat(0xf4efe6));
+  counter.position.y = 0.475;
+  const machine = new THREE.Mesh(new RoundedBoxGeometry(0.45, 0.55, 0.4, 2, 0.05), mat(0x2f3540, { metalness: 0.3, roughness: 0.4 }));
+  machine.position.set(0, 1.23, -0.25);
+  const light = new THREE.Mesh(new THREE.SphereGeometry(0.03, 8, 6), new THREE.MeshBasicMaterial({ color: 0x55d68f }));
+  light.position.set(0.12, 1.4, -0.04);
+  const cupA = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.045, 0.1, 16), mat(0xffffff));
+  cupA.position.set(-0.1, 1.0, 0.3);
+  const cupB = cupA.clone();
+  cupB.position.set(0.1, 1.0, 0.4);
+  g.add(counter, machine, light, cupA, cupB);
+  g.traverse((o) => (o.castShadow = true));
+  g.rotation.y = Math.PI / 2;
+  g.position.set(x, 0, z);
+  return g;
+}
+
+export interface OfficeInfo {
+  boardAnchor: THREE.Vector3;
+  center: THREE.Vector3;
+  size: number;
+  corridorX: number;
+  coffee: THREE.Vector3;
+  /** Các điểm sàn trống để chó đi dạo. */
+  freePoints: THREE.Vector3[];
+  dispose(): void;
+}
+
+export function createOffice(scene: THREE.Scene, spots: DeskSpot[]): OfficeInfo {
   const group = new THREE.Group();
   const xs = spots.map((s) => s.x);
   const zs = spots.map((s) => s.z);
@@ -166,7 +193,7 @@ export function createOffice(
     group.add(frame, pane, bar);
   }
 
-  group.add(plant(minX + 1, minZ + 1, 1.1), plant(maxX - 0.9, minZ + 1), plant(maxX - 0.9, maxZ - 1, 0.9), shelf(maxX - 3, minZ + 0.4));
+  group.add(plant(minX + 1, minZ + 1, 1.1), plant(maxX - 0.9, minZ + 1), plant(maxX - 0.9, maxZ - 1, 0.9), shelf(maxX - 3, minZ + 0.4), coffeeMachine(minX + 0.55, -3.6));
 
   // Ánh sáng: trời + nắng ấm có bóng mềm
   const hemi = new THREE.HemisphereLight(0xfff6e8, 0xcdb79a, 1.4);
@@ -188,6 +215,14 @@ export function createOffice(
     boardAnchor: new THREE.Vector3(cx - w * 0.12, 2.4, minZ + 0.16),
     center: new THREE.Vector3(cx, 0, cz),
     size: Math.max(w, d),
+    corridorX: minX + 1.6,
+    coffee: new THREE.Vector3(minX + 1.3, 0, -3.6),
+    freePoints: [
+      new THREE.Vector3(minX + 1.6, 0, -3),
+      new THREE.Vector3(cx, 0, -3.2),
+      new THREE.Vector3(maxX - 2, 0, -3),
+      ...[...new Set(zs)].flatMap((z) => [new THREE.Vector3(minX + 1.6, 0, z + 1.7), new THREE.Vector3(cx, 0, z + 1.7), new THREE.Vector3(maxX - 1.5, 0, z + 1.7)]),
+    ],
     dispose() {
       scene.remove(group);
       group.traverse((o) => {

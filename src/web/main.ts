@@ -12,6 +12,8 @@ import { createDesk, type DeskObject } from './scene/desk.js';
 import { createOffice } from './scene/office.js';
 import { Effects } from './scene/paper.js';
 import { renderTicker } from './scene/ticker.js';
+import { besideDesk, route, seatOf, Walkers } from './scene/walkers.js';
+import type { DeskSpot } from './layout.js';
 
 const $ = (id: string) => document.getElementById(id)!;
 
@@ -54,9 +56,25 @@ if (controls) {
   controls.minDistance = 6;
   controls.maxDistance = 80;
   controls.screenSpacePanning = false;
+  // Tự xoay chậm khi không ai chạm; người xem tương tác thì dừng 20 giây.
+  controls.autoRotate = !matchMedia('(prefers-reduced-motion: reduce)').matches;
+  controls.autoRotateSpeed = 0.35;
+  let resume: ReturnType<typeof setTimeout> | undefined;
+  controls.addEventListener('start', () => {
+    controls.autoRotate = false;
+    clearTimeout(resume);
+  });
+  controls.addEventListener('end', () => {
+    clearTimeout(resume);
+    resume = setTimeout(() => (controls.autoRotate = !matchMedia('(prefers-reduced-motion: reduce)').matches), 20_000);
+  });
 }
 
 const effects = new Effects(scene);
+const walkers = new Walkers(scene);
+const walking = new Set<string>();
+let spotByKey = new Map<string, DeskSpot>();
+let dogAdded = false;
 const board = createBoard();
 scene.add(board.mesh);
 const desks = new Map<string, DeskObject>();
@@ -88,6 +106,18 @@ function applySnapshot(s: Snapshot) {
     office?.dispose();
     office = createOffice(scene, spots);
     board.mesh.position.copy(office.boardAnchor);
+    spotByKey = new Map(spots.map((p) => [p.key, p]));
+    if (!dogAdded) {
+      dogAdded = true;
+      // Chó đi dọc lối đi: ra hành lang trái, đổi dãy, rồi tới điểm đích (không xuyên bàn).
+      walkers.addDog((cur) => {
+        if (!office) return [];
+        const pts = office.freePoints;
+        const target = pts[Math.floor(Math.random() * pts.length)]!.clone();
+        const x = office.corridorX;
+        return [new THREE.Vector3(x, 0, cur.z), new THREE.Vector3(x, 0, target.z), target];
+      });
+    }
     const keep = new Set(spots.map((p) => p.key));
     for (const [k, d] of desks) {
       if (!keep.has(k)) {
@@ -138,6 +168,64 @@ function deskPos(key: string | null): THREE.Vector3 | null {
   return d ? d.group.position.clone().add(d.anchor) : null;
 }
 
+const navInfo = () => (office ? { corridorX: office.corridorX, coffee: office.coffee, spots: spotByKey } : null);
+
+/** Người gửi đứng dậy, cầm giấy đi tới bàn người nhận rồi về chỗ. Trả false nếu không đi được. */
+function deliver(fromKey: string, toKey: string): boolean {
+  const nav = navInfo();
+  const a = spotByKey.get(fromKey);
+  const b = spotByKey.get(toKey);
+  if (!nav || !a || !b || a === b || walking.has(fromKey)) return false;
+  const go = [seatOf(a), ...route(a, b, nav)];
+  walking.add(fromKey);
+  desks.get(fromKey)?.setSeated(false);
+  walkers.walkPerson(fromKey, go, {
+    carrying: true,
+    pause: 1.6,
+    back: [...go].reverse(),
+    onDone: () => {
+      walking.delete(fromKey);
+      desks.get(fromKey)?.setSeated(true);
+    },
+  });
+  return true;
+}
+
+/** Thỉnh thoảng một người ra máy pha cà phê. */
+function coffeeBreak() {
+  const nav = navInfo();
+  if (!nav || walkers.busy >= 2 || document.hidden) return;
+  const free = [...spotByKey.values()].filter((s) => !walking.has(s.key));
+  const s = free[Math.floor(Math.random() * free.length)];
+  if (!s) return;
+  const go = [seatOf(s), ...route(s, 'coffee', nav)];
+  walking.add(s.key);
+  desks.get(s.key)?.setSeated(false);
+  walkers.walkPerson(s.key, go, {
+    pause: 3,
+    back: [...route('coffee', s, nav), seatOf(s)],
+    onDone: () => {
+      walking.delete(s.key);
+      desks.get(s.key)?.setSeated(true);
+    },
+  });
+}
+setInterval(coffeeBreak, 9000);
+void besideDesk;
+
+// ?demo=1 — bắn sự kiện giả để xem hiệu ứng (không đụng dữ liệu thật).
+if (new URLSearchParams(location.search).has('demo')) {
+  const types: OfficeEvent['type'][] = ['gh_comment', 'review', 'review_requested', 'backlog_comment', 'pr_opened', 'pr_merged'];
+  let n = 0;
+  setInterval(() => {
+    const keys = [...spotByKey.keys()];
+    if (keys.length < 2) return;
+    const from = keys[Math.floor(Math.random() * keys.length)]!;
+    const to = keys.filter((k) => k !== from)[Math.floor(Math.random() * (keys.length - 1))]!;
+    onEvent({ id: `demo-${++n}`, type: types[n % types.length]!, at: new Date().toISOString(), from, to: [to], title: 'Sự kiện mẫu', url: '#' });
+  }, 5000);
+}
+
 function onEvent(e: OfficeEvent) {
   if (!snap || snap.events.some((x) => x.id === e.id)) return;
   snap = { ...snap, events: [e, ...snap.events].slice(0, 50) };
@@ -148,9 +236,18 @@ function onEvent(e: OfficeEvent) {
     for (const k of e.to) desks.get(k)?.bumpStack();
     if (from) effects.popLabel(from, 'PR mới');
   } else if (e.type === 'pr_merged') {
-    for (const p of tos.length ? tos : from ? [from] : []) effects.popLabel(p, '🔔 Đã merge');
+    for (const p of tos.length ? tos : from ? [from] : []) {
+      effects.popLabel(p, '🔔 Đã merge');
+      effects.confetti(p);
+    }
   } else if (from) {
-    for (const to of tos) effects.flyPaper(from, to, e.type === 'backlog_comment' ? 0xfff3b0 : 0xffffff);
+    e.to.forEach((k, i) => {
+      // Người đầu tiên được đưa giấy tận tay; còn lại bay giấy.
+      if (!(i === 0 && e.from && deliver(e.from, k))) {
+        const to = deskPos(k);
+        if (to) effects.flyPaper(from, to, e.type === 'backlog_comment' ? 0xfff3b0 : 0xffffff);
+      }
+    });
   } else {
     for (const p of tos) effects.popLabel(p, e.type === 'task_status' ? 'Đổi trạng thái' : 'Mới');
   }
@@ -188,6 +285,7 @@ renderer?.setAnimationLoop(() => {
   const t = clock.elapsedTime;
   for (const d of desks.values()) d.tick(t);
   effects.tick(dt);
+  walkers.tick(dt, t);
   controls?.update();
   renderer.render(scene, camera);
 });

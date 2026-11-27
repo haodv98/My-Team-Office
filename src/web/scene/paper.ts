@@ -59,6 +59,43 @@ export class Effects {
     });
   }
 
+  /** Pháo giấy nhiều màu. */
+  confetti(at: THREE.Vector3) {
+    const colors = [0xef4f45, 0xf5b62a, 0x4cb07a, 0x2f6fde, 0xc96d8b];
+    const geo = new THREE.PlaneGeometry(0.08, 0.12);
+    const bits = Array.from({ length: 40 }, (_, i) => {
+      const m = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color: colors[i % colors.length]!, side: THREE.DoubleSide }));
+      m.position.copy(at).add(new THREE.Vector3(0, 1.2, 0));
+      this.scene.add(m);
+      const vel = new THREE.Vector3((Math.random() - 0.5) * 3, 3 + Math.random() * 2.5, (Math.random() - 0.5) * 3);
+      const spin = new THREE.Vector3(Math.random() * 8, Math.random() * 8, Math.random() * 8);
+      return { m, vel, spin };
+    });
+    let t = 0;
+    this.anims.push({
+      update: (dt) => {
+        t += dt;
+        for (const b of bits) {
+          b.vel.y -= 6 * dt;
+          b.vel.multiplyScalar(0.985);
+          b.m.position.addScaledVector(b.vel, dt);
+          if (b.m.position.y < 0.02) b.m.position.y = 0.02;
+          b.m.rotation.x += b.spin.x * dt;
+          b.m.rotation.y += b.spin.y * dt;
+        }
+        if (t > 3) {
+          for (const b of bits) {
+            this.scene.remove(b.m);
+            (b.m.material as THREE.Material).dispose();
+          }
+          geo.dispose();
+          return false;
+        }
+        return true;
+      },
+    });
+  }
+
   tick(dt: number) {
     this.anims = this.anims.filter((a) => a.update(dt));
   }
