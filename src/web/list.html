@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="vi">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Team Office – Danh sách</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="./style.css" />
+    <link rel="stylesheet" href="./list.css" />
+  </head>
+  <body>
+    <header class="top">
+      <h1>Team Office</h1>
+      <span id="updated" class="muted"></span>
+      <a href="/" class="switch">Xem văn phòng 3D</a>
+    </header>
+    <div id="banner" class="banner" hidden></div>
+    <main class="grid">
+      <section id="people" aria-label="Thành viên"></section>
+      <aside>
+        <section id="progress"></section>
+        <section id="events"></section>
+        <section id="team"></section>
+        <section id="unassigned"></section>
+        <section id="config"></section>
+      </aside>
+    </main>
+    <script type="module" src="./list.ts"></script>
+  </body>
+</html>
