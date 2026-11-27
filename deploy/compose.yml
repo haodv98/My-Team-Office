@@ -1,0 +1,18 @@
+services:
+  team-office:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    env_file: ../.env
+    environment:
+      MEMBERS_FILE: /app/config/members.yaml
+      DATA_DIR: /app/data
+    volumes:
+      - ../config/members.yaml:/app/config/members.yaml:ro
+      - team-office-data:/app/data
+    ports:
+      - "4800:4800"
+    restart: unless-stopped
+
+volumes:
+  team-office-data:
