@@ -1,1 +1,32 @@
-<!doctype html><html lang="vi"><head><meta charset="utf-8"><title>Team Office</title></head><body><a href="/list">Danh sách</a></body></html>
+<!doctype html>
+<html lang="vi">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Team Office</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="./style.css" />
+    <link rel="stylesheet" href="./office.css" />
+  </head>
+  <body>
+    <div id="stage"></div>
+    <div class="topbar">
+    <header class="hud">
+      <h1>Team Office</h1>
+      <span id="updated"></span>
+      <span class="legend"><i class="dot red"></i>đang chờ <i class="dot yellow"></i>chờ lâu</span>
+      <button id="recenter" type="button">Về giữa</button>
+      <a href="/list">Bản danh sách</a>
+    </header>
+    <div id="banner" class="banner" hidden></div>
+    </div>
+    <aside id="panel" hidden></aside>
+    <div id="ticker" aria-live="polite"></div>
+    <div id="lite-hint" hidden>
+      <p>Máy này hiển thị 3D chậm. <a href="/list">Mở bản danh sách?</a></p>
+      <button type="button">Vẫn xem 3D</button>
+    </div>
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>
