@@ -56,7 +56,7 @@ test('SSE: hello khi nối, snapshot + office khi broadcast', async () => {
     { id: 'e1', type: 'pr_opened', at: '2026-11-21T05:00:30.000Z', from: 'a', to: ['a'], title: 't', url: 'u' },
   ]);
   await readUntil('event: office');
-  expect(text).toContain('event: snapshot\ndata: {"generatedAt":"2026-11-21T05:01:00.000Z"}');
+  expect(text).toContain('event: snapshot\ndata: {"generatedAt":"2026-11-21T05:01:00.000Z","rev":"2026-11-21T05:01:00.000Z"}');
   expect(text).toContain('"id":"e1"');
   ctrl.abort();
 });

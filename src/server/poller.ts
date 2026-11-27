@@ -1,7 +1,7 @@
 // Vòng polling: thu thập → dựng snapshot → sinh sự kiện → lưu.
-import type { BacklogData, GithubData, Member, OfficeEvent, Snapshot } from '../shared/types.js';
+import type { BacklogComment, BacklogData, GithubData, Member, OfficeEvent, Snapshot } from '../shared/types.js';
 import { collectBacklog } from './backlog.js';
-import { type Config, loadMembers } from './config.js';
+import { type Config, safeLoadMembers } from './config.js';
 import { collectGithub } from './github.js';
 import { CachedFetcher, SourceError } from './http.js';
 import { buildSnapshot, diffEvents, mergeEvents, readStore, type StoredState, writeStore } from './snapshot.js';
@@ -33,14 +33,26 @@ export async function runCycle(deps: CycleDeps): Promise<{ state: StoredState; f
     const reason = g.status === 'rejected' ? g.reason : (b as PromiseRejectedResult).reason;
     if (!prev) throw reason;
     console.warn(JSON.stringify({ level: 'warn', msg: 'Nguồn dữ liệu lỗi, giữ snapshot cũ', failed, error: String(reason) }));
-    return { state: { snapshot: { ...prev.snapshot, staleSources: failed }, seen: prev.seen }, fresh: [] };
+    return { state: { ...prev, snapshot: { ...prev.snapshot, staleSources: failed } }, fresh: [] };
   }
 
+  const bl: BacklogData = { ...b.value, comments: carryComments(prev?.blComments ?? [], b.value, now) };
   const ctx = { ...deps.ctx, now };
-  const base = buildSnapshot(g.value, b.value, deps.members, ctx);
-  const { events, seen } = diffEvents(prev?.seen ?? null, g.value, b.value, deps.members, ctx);
+  const { events, seen } = diffEvents(prev?.seen ?? null, g.value, bl, deps.members, ctx);
+  const base = buildSnapshot(g.value, bl, deps.members, { ...ctx, requestedSince: seen.requestedAt ?? {} });
   const snapshot: Snapshot = { ...base, events: mergeEvents(prev?.snapshot.events ?? [], events), staleSources: [] };
-  return { state: { snapshot, seen }, fresh: events };
+  return { state: { snapshot, seen, blComments: bl.comments }, fresh: events };
+}
+
+/** Gộp comment Backlog cũ còn hiệu lực (task còn mở, trong 14 ngày) với comment vừa đọc. */
+function carryComments(prev: BacklogComment[], fresh: BacklogData, now: Date): BacklogComment[] {
+  const open = new Set(fresh.tasks.filter((t) => t.bucket !== 'closed').map((t) => t.number));
+  const cutoff = now.getTime() - BACKFILL_DAYS * DAY_MS;
+  const byId = new Map<number, BacklogComment>();
+  for (const c of [...prev, ...fresh.comments]) {
+    if (open.has(c.taskNumber) && new Date(c.createdAt).getTime() >= cutoff) byId.set(c.id, c);
+  }
+  return [...byId.values()].sort((x, y) => x.createdAt.localeCompare(y.createdAt));
 }
 
 export function startPoller(
@@ -49,6 +61,7 @@ export function startPoller(
 ): { stop(): void; current(): Snapshot | null; ready: Promise<void> } {
   const f = new CachedFetcher(cfg.proxy ? { proxy: cfg.proxy } : {});
   let state: StoredState | null = null;
+  let members: Member[] = [];
   let timer: NodeJS.Timeout | undefined;
   let stopped = false;
 
@@ -58,7 +71,7 @@ export function startPoller(
         collectGithub: (since) => collectGithub(f, cfg.github, since),
         collectBacklog: (since) => collectBacklog(f, cfg.backlog, cfg.statusMap, since),
         // Đọc lại mỗi chu kỳ để sửa members.yaml không cần khởi động lại.
-        members: loadMembers(cfg.membersFile),
+        members: (members = safeLoadMembers(cfg.membersFile, members)),
         ctx: { projectKey: cfg.backlog.projectKey, agentMarkers: cfg.agentMarkers },
         now: () => new Date(),
         prev: state,

@@ -1,4 +1,5 @@
 // Kết nối tới server: tải snapshot, nghe sự kiện SSE, tự nối lại.
+import { snapshotRev } from '../shared/rev.js';
 import type { OfficeEvent, Snapshot } from '../shared/types.js';
 
 export interface Handlers {
@@ -29,8 +30,9 @@ export function connect(h: Handlers, deps: ConnectDeps = {}): () => void {
       const res = await doFetch('/api/snapshot');
       if (!res.ok) throw new Error(String(res.status));
       const s = (await res.json()) as Snapshot;
-      if (s.generatedAt !== current) {
-        current = s.generatedAt;
+      const rev = snapshotRev({ generatedAt: s.generatedAt, staleSources: s.staleSources ?? [] });
+      if (rev !== current) {
+        current = rev;
         h.onSnapshot(s);
       }
     } catch {
@@ -47,10 +49,13 @@ export function connect(h: Handlers, deps: ConnectDeps = {}): () => void {
   es.onerror = () => h.onStatus(false);
   es.addEventListener('hello', (e) => {
     h.onStatus(true);
-    const g = parse(e as MessageEvent).generatedAt as string | null;
-    void load(g ?? null);
+    const d = parse(e as MessageEvent);
+    void load((d.rev ?? d.generatedAt ?? null) as string | null);
   });
-  es.addEventListener('snapshot', (e) => void load(parse(e as MessageEvent).generatedAt as string));
+  es.addEventListener('snapshot', (e) => {
+    const d = parse(e as MessageEvent);
+    void load((d.rev ?? d.generatedAt) as string);
+  });
   es.addEventListener('office', (e) => h.onEvent(parse(e as MessageEvent) as unknown as OfficeEvent));
   void load(null);
 

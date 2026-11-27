@@ -8,6 +8,8 @@ export interface WaitCtx {
   projectKey: string;
   agentMarkers: string[];
   now: Date;
+  /** Lúc Engine thấy lần đầu yêu cầu review, khoá `{repo}#{n}:{login chữ thường}`. */
+  requestedSince?: Record<string, string>;
 }
 
 const STALE_BUSINESS_DAYS = 3;
@@ -50,17 +52,20 @@ export function computeWaits(
     const { memberKeys, taskNumbers } = attributePr(pr, tasks, members, ctx.projectKey);
     const prRef = `${pr.repo}#${pr.number}`;
     const requested = new Set(pr.requestedReviewers.map((l) => l.toLowerCase()));
-    const lastReviewAt = pr.reviews.reduce((acc, r) => latest(acc, r.submittedAt), pr.createdAt);
 
     for (const login of pr.requestedReviewers) {
       const m = memberByLogin(members, login);
       if (!m) continue;
+      // Chưa biết lúc được yêu cầu (lần chạy đầu) → đoán bằng review gần nhất của chính người đó hoặc lúc mở PR.
+      const ownLast = pr.reviews
+        .filter((r) => r.author.toLowerCase() === login.toLowerCase())
+        .reduce((acc, r) => latest(acc, r.submittedAt), pr.createdAt);
       push({
         id: `review:${prRef}:${m.key}`,
         kind: 'review',
         recipient: m.key,
         sender: actor(pr.author, pr.body),
-        since: lastReviewAt,
+        since: ctx.requestedSince?.[`${prRef}:${login.toLowerCase()}`] ?? ownLast,
         title: pr.title,
         url: pr.url,
       });
@@ -68,7 +73,8 @@ export function computeWaits(
 
     for (const [reviewer, review] of latestDecisiveReviews(pr)) {
       if (review.state !== 'CHANGES_REQUESTED' || requested.has(reviewer)) continue;
-      for (const key of memberKeys) {
+      // Không gán được ai → vẫn hiện ở "Chưa rõ người" (recipient không phải bàn nào).
+      for (const key of memberKeys.length ? memberKeys : [`gh:${pr.author.toLowerCase()}`]) {
         push({
           id: `fix:${prRef}:${reviewer}:${key}`,
           kind: 'fix',

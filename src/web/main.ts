@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import type { Member, OfficeEvent, Snapshot } from '../shared/types.js';
+import { agentActiveKeys } from './agents.js';
 import { connect } from './api.js';
 import { hhmm, OFFLINE_BANNER, staleBanner } from './format.js';
 import { layoutDesks } from './layout.js';
@@ -138,7 +139,8 @@ function applySnapshot(s: Snapshot) {
     }
     if (!controls?.target.lengthSq() || camera.position.lengthSq() === 0) frameCamera();
   }
-  for (const d of s.desks) desks.get(d.member.key)?.update(d);
+  const agents = agentActiveKeys(s, new Date());
+  for (const d of s.desks) desks.get(d.member.key)?.update(d, agents.has(d.member.key));
   board.update(s);
   renderTicker($('ticker'), s.events, members);
   renderHud();

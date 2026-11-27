@@ -25,7 +25,7 @@ const C = {
 export interface DeskObject {
   group: THREE.Group;
   anchor: THREE.Vector3;
-  update(desk: Desk): void;
+  update(desk: Desk, agentActive?: boolean): void;
   tick(t: number): void;
   bumpStack(): void;
   /** Ẩn người ở bàn khi họ đang đi lại. */
@@ -225,7 +225,7 @@ export function createDesk(desk: Desk): DeskObject {
   let typing = false;
   let stackBump = 0;
 
-  const update = (d: Desk) => {
+  const update = (d: Desk, agentActive = false) => {
     const t = d.doingTasks[0];
     const line = t ? `${t.key} · ${t.title}${d.doingTasks.length > 1 ? ` (+${d.doingTasks.length - 1})` : ''}` : 'Không có task đang xử lý';
     lamp = d.waits.some((w) => w.stale) ? 'yellow' : d.waits.length ? 'red' : 'off';
@@ -240,7 +240,7 @@ export function createDesk(desk: Desk): DeskObject {
     gm.color.setHex(t ? 0xffffff : C.screen);
     gm.needsUpdate = true;
     typing = !!t;
-    robot.visible = d.waits.some((w) => w.sender.viaAgent);
+    robot.visible = agentActive;
     stack.clear();
     for (let i = 0; i < Math.min(d.prs.length, 8); i++) {
       const sheet = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.025, 0.46), mat(C.paper));

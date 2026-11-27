@@ -3,6 +3,7 @@ import { existsSync } from 'node:fs';
 import type { ServerResponse } from 'node:http';
 import fastifyStatic from '@fastify/static';
 import Fastify, { type FastifyInstance } from 'fastify';
+import { snapshotRev } from '../shared/rev.js';
 import type { OfficeEvent, Snapshot } from '../shared/types.js';
 
 const PING_MS = 25_000;
@@ -36,7 +37,8 @@ export function buildServer(opts: { getSnapshot: () => Snapshot | null; staticDi
       Connection: 'keep-alive',
       'X-Accel-Buffering': 'no',
     });
-    send(res, 'hello', { generatedAt: opts.getSnapshot()?.generatedAt ?? null });
+    const cur = opts.getSnapshot();
+    send(res, 'hello', { generatedAt: cur?.generatedAt ?? null, rev: cur ? snapshotRev(cur) : null });
     clients.add(res);
     const ping = setInterval(() => res.write(': ping\n\n'), PING_MS);
     req.raw.on('close', () => {
@@ -59,7 +61,7 @@ export function buildServer(opts: { getSnapshot: () => Snapshot | null; staticDi
     app,
     broadcast(s, fresh) {
       for (const res of clients) {
-        send(res, 'snapshot', { generatedAt: s.generatedAt });
+        send(res, 'snapshot', { generatedAt: s.generatedAt, rev: snapshotRev(s) });
         for (const e of fresh) send(res, 'office', e);
       }
     },

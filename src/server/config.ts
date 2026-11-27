@@ -49,7 +49,7 @@ interface RawMember {
   key: string;
   display: string;
   backlog_user_id: number;
-  github?: string[];
+  github?: string[] | string;
   role?: string;
 }
 
@@ -59,7 +59,7 @@ export function loadMembers(path: string): Member[] {
     key: String(r.key),
     display: String(r.display),
     backlogUserId: Number(r.backlog_user_id),
-    github: (r.github ?? []).map((g) => String(g).toLowerCase()),
+    github: (Array.isArray(r.github) ? r.github : r.github ? [r.github] : []).map((g) => String(g).toLowerCase()),
     role: r.role ?? 'khac',
   }));
 }
@@ -67,4 +67,14 @@ export function loadMembers(path: string): Member[] {
 export function memberByLogin(members: Member[], login: string): Member | undefined {
   const l = login.toLowerCase();
   return members.find((m) => m.github.some((g) => g.toLowerCase() === l));
+}
+
+/** Đọc members.yaml; file thiếu / sai cú pháp → giữ danh sách trước đó và ghi log (không đóng băng cả chu kỳ). */
+export function safeLoadMembers(path: string, fallback: Member[]): Member[] {
+  try {
+    return loadMembers(path);
+  } catch (e) {
+    console.error(JSON.stringify({ level: 'error', msg: 'Không đọc được members.yaml, dùng danh sách trước đó', path, error: String(e) }));
+    return fallback;
+  }
 }

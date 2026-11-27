@@ -26,11 +26,15 @@ export interface Seen {
   backlogCommentIds: number[];
   taskStatus: Record<number, string>;
   requested: string[];
+  /** Lúc thấy lần đầu mỗi yêu cầu review (`{repo}#{n}:{login}`). */
+  requestedAt?: Record<string, string>;
 }
 
 export interface StoredState {
   snapshot: Snapshot;
   seen: Seen;
+  /** Comment Backlog mang theo qua các chu kỳ để mục chờ không mất khi ra khỏi cửa sổ đọc 24 giờ. */
+  blComments?: BacklogData['comments'];
 }
 
 const MAX_EVENTS = 50;
@@ -118,7 +122,7 @@ export function diffEvents(
   members: Member[],
   ctx: WaitCtx,
 ): { events: OfficeEvent[]; seen: Seen } {
-  const seen: Seen = { at: ctx.now.toISOString(), prs: {}, reviewIds: [], commentIds: [], backlogCommentIds: [], taskStatus: {}, requested: [] };
+  const seen: Seen = { at: ctx.now.toISOString(), prs: {}, reviewIds: [], commentIds: [], backlogCommentIds: [], taskStatus: {}, requested: [], requestedAt: {} };
   const events: OfficeEvent[] = [];
   const tasks = new Map(bl.tasks.map((t) => [t.number, t]));
   const key = (login: string) => memberByLogin(members, login)?.key ?? null;
@@ -146,6 +150,8 @@ export function diffEvents(
     for (const login of pr.requestedReviewers) {
       const rq = `${ref}:${login.toLowerCase()}`;
       seen.requested.push(rq);
+      const firstSeen = prev?.requestedAt?.[rq] ?? (prev ? seen.at : undefined);
+      if (firstSeen) seen.requestedAt![rq] = firstSeen;
       if (prev && !prev.requested.includes(rq)) {
         emit({ id: `ev:rq:${rq}:${seen.at}`, type: 'review_requested', at: seen.at, from: key(pr.author), to: others([key(login)], null), ...base });
       }

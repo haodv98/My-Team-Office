@@ -19,6 +19,8 @@ export class SourceError extends Error {
   }
 }
 
+const REQUEST_TIMEOUT_MS = 20_000;
+
 const sourceOf = (url: string): Source => (new URL(url).hostname === 'api.github.com' ? 'github' : 'backlog');
 
 function nextLink(link: string | null): string | null {
@@ -58,7 +60,7 @@ export class CachedFetcher {
     if (cached) h['If-None-Match'] = cached.etag;
     let res: Response;
     try {
-      res = await this.fetchImpl(url, { method: 'GET', headers: h });
+      res = await this.fetchImpl(url, { method: 'GET', headers: h, signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) });
     } catch {
       throw new SourceError(sourceOf(url), 0, url);
     }
