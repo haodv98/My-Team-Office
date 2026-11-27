@@ -1,6 +1,7 @@
 // Văn phòng 3D.
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import type { Member, OfficeEvent, Snapshot } from '../shared/types.js';
 import { connect } from './api.js';
 import { hhmm, OFFLINE_BANNER, staleBanner } from './format.js';
@@ -32,12 +33,19 @@ if (renderer) {
   renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.05;
   stage.appendChild(renderer.domElement);
 }
 
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0xdfe7ee);
-const camera = new THREE.PerspectiveCamera(40, 1, 0.1, 400);
+scene.background = new THREE.Color(0xe9eef2);
+if (renderer) {
+  const pmrem = new THREE.PMREMGenerator(renderer);
+  scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+  scene.environmentIntensity = 0.35;
+}
+const camera = new THREE.PerspectiveCamera(32, 1, 0.1, 400);
 const controls = renderer ? new OrbitControls(camera, renderer.domElement) : null;
 if (controls) {
   controls.enableDamping = true;
@@ -109,9 +117,9 @@ function applySnapshot(s: Snapshot) {
 
 function frameCamera() {
   if (!office) return;
-  const c = office.center.clone().add(new THREE.Vector3(0, 0, -1));
-  const dist = office.size * 1.05 + 4;
-  camera.position.set(c.x + dist * 0.15, dist * 0.8, c.z + dist * 0.7);
+  const c = office.center.clone().add(new THREE.Vector3(0, 0.5, -0.5));
+  const dist = office.size * 1.15 + 6;
+  camera.position.set(c.x + dist * 0.38, dist * 0.52, c.z + dist * 0.78);
   controls?.target.copy(c);
   controls?.update();
 }
